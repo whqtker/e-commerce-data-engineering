@@ -25,7 +25,7 @@ class KafkaConfig:
         'linger_ms': int(os.getenv("KAFKA_LINGER_MS", "10")),  # 배치 대기 시간
         'buffer_memory': int(os.getenv("KAFKA_BUFFER_MEMORY", "33554432")),
         'compression_type': os.getenv("KAFKA_COMPRESSION", "snappy"), # 메시지를 보내기 전 어떤 알고리즘으로 압축할지
-        'max_in_flight_requests_per_connection': 5, # 프로듀서가 브로커와의 단일 연결에서 응답을 받지 않고 동시에 보낼 수 있는 최대 요청의 수
+        'max_in_flight_requests_per_connection': 1, # 프로듀서가 브로커와의 단일 연결에서 응답을 받지 않고 동시에 보낼 수 있는 최대 요청의 수
         'enable_idempotence': True,  # 중복 메시지 방지
     })
     
