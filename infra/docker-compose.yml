@@ -110,7 +110,7 @@ services:
   # API 서버 관련
   api_server:
     build:
-      context: ./api_server
+      context: ../api_server
     container_name: api_server
     depends_on:
       - redis
