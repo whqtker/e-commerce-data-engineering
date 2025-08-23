@@ -158,13 +158,10 @@ class UserBehaviorProducer:
             raise
     
     # 메시지 전송 결과 롤백
-    def _delivery_callback(self, err, msg):
-        if err:
-            self.stats['errors'] += 1
-            self.logger.error(f'메시지 전송 실패: {err}')
-        else:
+    def _delivery_callback(self, record_metadata):
+        if record_metadata:
             self.stats['total_sent'] += 1
-            if self.stats['total_sent'] % 1000 == 0: # 1000개마다 로그
+            if self.stats['total_sent'] % 100 == 0:
                 self._log_stats()
     
     def _log_stats(self):
@@ -243,7 +240,7 @@ class UserBehaviorProducer:
             # 파티셔닝을 위한 사용자 ID 기반 키 설정
             key = event.user_id
             
-            self.producer.send(
+            future = self.producer.send(
                 kafka_config.topic_name,
                 key=key,
                 value=event.to_dict(),
@@ -251,11 +248,21 @@ class UserBehaviorProducer:
                     ('event_type', event.action_type.encode('utf-8')),
                     ('category', event.product_category.encode('utf-8'))
                 ]
-            ).add_callback(self._delivery_callback)
+            )
+        
+            # 성공 콜백
+            future.add_callback(self._delivery_callback)
             
+            # 에러 콜백
+            future.add_errback(self._error_callback)
+        
         except Exception as e:
             self.stats['errors'] += 1
             self.logger.error(f"이벤트 전송 실패: {e}")
+
+    def _error_callback(self, exception):
+        self.stats['errors'] += 1
+        self.logger.error(f'메시지 전송 실패: {exception}')
     
     def stop(self):
         if not self.is_running:
