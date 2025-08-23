@@ -1,0 +1,131 @@
+services:
+  # 메시징 관련
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    container_name: zookeeper
+    networks:
+      - data-network
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    container_name: kafka
+    networks:
+      - data-network
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181' # 카프카가 관리할 주피커 서버의 주소
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092 # 도커 외부에서 접속할 때, 도커 내부 컨테이너에서 접속할 때 사용하는 주소
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+
+  # 클러스터 관련
+  spark-master:
+    image: bitnami/spark:3.5
+    container_name: spark-master
+    command: >
+      /opt/bitnami/spark/sbin/start-master.sh -h spark-master
+    ports:
+      - "8080:8080"
+      - "7077:7077" # 워커 노드가 마스터 노드와 통신하기 위한 주소
+    networks:
+      - data-network
+    volumes:
+      - ./stream_processor:/opt/bitnami/spark/jobs/stream
+      - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+
+  spark-worker:
+    image: bitnami/spark:3.5
+    container_name: spark-worker
+    depends_on:
+      - spark-master
+    command: >
+      /opt/bitnami/spark/sbin/start-worker.sh spark://spark-master:7077
+    networks:
+      - data-network
+    volumes:
+      - ./stream_processor:/opt/bitnami/spark/jobs/stream
+      - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+
+  # 워크플로우 관련
+  # postgres: airflow 관련 메타데이터 관리
+  postgres:
+    image: postgres:13
+    container_name: postgres
+    networks:
+      - data-network
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow
+    volumes:
+      - airflow-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # redis: airflow job이 실행할 태스크를 담아두는 브로커
+  redis:
+    image: redis:6.2
+    container_name: redis
+    networks:
+      - data-network
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  airflow-webserver:
+    image: apache/airflow:2.9.2
+    container_name: airflow-webserver
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks:
+      - data-network
+    ports:
+      - "8081:8080" # 로컬 8080은 Spark UI가 사용하므로 8081로 변경
+    volumes:
+      - ./batch_processor/dags:/opt/airflow/dags
+      - airflow-logs:/opt/airflow/logs
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
+      - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+    command: webserver
+
+  # API 서버 관련
+  api_server:
+    build:
+      context: ./api_server
+    container_name: api_server
+    depends_on:
+      - redis
+    networks:
+      - data-network
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./api_server:/app
+
+networks:
+  data-network:
+    driver: bridge
+
+volumes:
+  airflow-db-data:
+  airflow-logs:
+  redis-data:
