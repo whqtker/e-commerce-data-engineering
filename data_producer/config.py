@@ -96,7 +96,7 @@ class DataConfig:
             format=self.log_format,
             handlers=[
                 logging.StreamHandler(), # 로그를 콘솔로 보냄
-                logging.FileHandler('data_producer.log') # 로그를 명시된 파일로 저장
+                            logging.FileHandler('data_producer.log', encoding='utf-8') # 로그를 명시된 파일로 저장
             ]
         )
 
