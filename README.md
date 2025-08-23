@@ -1,7 +1,7 @@
 ## 디렉터리 구조
 
 ```
-project_root/
+e-commerce-de/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml
@@ -32,6 +32,7 @@ project_root/
 │   ├── __init__.py
 │   ├── main.py # API 엔드포인트 정의
 │   ├── models.py # Pydantic 모델
+│   ├── Dockerfile
 │   └── core/
 │       └── recommendation_logic.py # 학습된 모델과 Redis를 사용한 추천 로직
 │
