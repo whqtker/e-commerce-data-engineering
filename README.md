@@ -45,9 +45,30 @@ e-commerce-de/
     └── 01_explore_user_logs.ipynb
 ```
 
+## version
+
+python : 3.9.x
+hadoop : 3.3.6
+spark : 3.5.6
+
+나머지는 poetry에 명시
+
 ## how to start
+
+hadoop 3.3.6 설치
+hadoop.ddl, winutils.exe
+
+환경 변수 설정
+
+py -3.9 -m venv .venv
 
 source .venv/Scripts/activate
 
+pip install poetry
+
+poetry install
+
 python -m data_producer.producer --mode sample --count 10
 python -m data_producer.producer --mode stream --duration 60
+
+python -m stream_processor.process_stream --duration 60

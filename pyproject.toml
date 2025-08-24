@@ -16,6 +16,8 @@ pandas = "^2.0.0"
 structlog = "^23.0.0"
 click = "^8.0.0"
 python-snappy = "^0.7.3"
+redis = "^6.4.0"
+pyspark = "3.5.6"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

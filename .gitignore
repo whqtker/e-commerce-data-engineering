@@ -2,3 +2,5 @@ WIL.md
 **/__pycache__/
 **/.venv/
 data_producer.log
+.idea
+/checkpoints/
