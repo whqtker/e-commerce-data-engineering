@@ -129,16 +129,16 @@ class StreamProcessor:
         
         if config:
             default_config.update(config)
-        
+
         return default_config
     
-    # forceDeleteTempCheckpointLocation: 스트리밍 쿼리 정상 종료 시 체크포인트 파일 삭제하도록
     def _create_spark_session(self) -> SparkSession:
         import sys
         python_path = sys.executable
         os.environ['PYSPARK_PYTHON'] = python_path
         os.environ['PYSPARK_DRIVER_PYTHON'] = python_path
 
+        # forceDeleteTempCheckpointLocation: 스트리밍 쿼리 정상 종료 시 체크포인트 파일 삭제하도록
         spark = SparkSession.builder \
             .appName(self.config['app_name']) \
             .master("local[12]") \
@@ -200,9 +200,10 @@ class StreamProcessor:
         ])
     
     # Kafka에서 스트리밍 데이터 읽기
-    # failOnDataLoss: 데이터를 읽는 도중 유실된 상황을 감지했을 때 작업 실패 여부
     def create_kafka_stream(self) -> DataFrame:
         try:
+            # failOnDataLoss: 데이터를 읽는 도중 유실된 상황을 감지했을 때 작업 실패 여부
+            # kafka.bootstrap.servers: 접속할 Kafak 브로커 주소
             kafka_df = self.spark \
                 .readStream \
                 .format("kafka") \
@@ -212,7 +213,7 @@ class StreamProcessor:
                 .option("failOnDataLoss", "false") \
                 .load()
             
-            # Kafka value를 JSON으로 파싱
+            # 스키마 정의
             schema = self._define_schema()
             
             parsed_df = kafka_df.select(
@@ -224,7 +225,7 @@ class StreamProcessor:
                 col("timestamp").alias("kafka_timestamp")
             ).select(
                 "kafka_key",
-                "data.*",
+                "data.*", # data.*: data라는 이름의 구조체 안의 모든 필드를 개별 컬럼으로 펼친다.
                 "topic",
                 "partition", 
                 "offset",
@@ -267,6 +268,9 @@ class StreamProcessor:
                 raise
         
         # 스트림 쿼리 시작
+        # trigger에 설정된 간격마다 새로운 데이터로 마이크로 배치 데이터프레임을 생성한다.
+        # 생성된 데이터프레임과 배치 ID를 process_batch 메서드의 인자로 전달하여 피처 엔지니어링을 수행한다.
+        # checkpointLocation으로 체크포인트 위치 지정
         query = df.writeStream \
             .outputMode(self.config['output_mode']) \
             .foreachBatch(process_batch) \
@@ -297,6 +301,7 @@ class StreamProcessor:
             pipeline = redis_client.pipeline()
             count = 0
 
+            # rows를 순회하며 파이프라인에 데이터 적재
             for row in rows:
                 try:
                     # 사용자 행동 데이터 저장
@@ -339,7 +344,7 @@ class StreamProcessor:
             # 처리 및 Redis 저장 시작
             query = self.process_and_store_to_redis(kafka_stream)
             
-            # 활성 스트림 추가
+            # 생성된 StreamingQuery 등록
             self.active_streams['main'] = query
             
             if duration_seconds:
