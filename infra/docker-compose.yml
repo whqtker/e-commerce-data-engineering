@@ -41,6 +41,8 @@ services:
     volumes:
       - ./stream_processor:/opt/bitnami/spark/jobs/stream
       - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+    env_file:
+      - ../.env
 
   spark-worker:
     image: bitnami/spark:3.5
@@ -54,6 +56,8 @@ services:
     volumes:
       - ./stream_processor:/opt/bitnami/spark/jobs/stream
       - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+    env_file:
+      - ../.env
 
   # 워크플로우 관련
   # postgres: airflow 관련 메타데이터 관리

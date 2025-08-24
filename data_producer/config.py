@@ -2,9 +2,11 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 import logging
+from dotenv import load_dotenv
 
+load_dotenv()
 
-@dataclass # 데이터를 저장하는 목적의 클래스를 만들 때 반복적으로 작성해야 하는 기본적인 메서드를 자동으로 생성
+@dataclass # 데이터를 저장하는 목적의 클래스를 만들 때 반복적으로 작성해야 하는 기본적인 메서드를 자동으로 생성, __init__ 등과 같은 메서드를 작성할 필요 없음
 class KafkaConfig:
 
     # Kafka 브로커 설정

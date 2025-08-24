@@ -382,6 +382,9 @@ class StreamProcessor:
 
 def main():
     import argparse
+    from dotenv import load_dotenv
+
+    load_dotenv()
     
     parser = argparse.ArgumentParser(description='Kafka → Spark → Redis 스트림 처리')
     parser.add_argument('--duration', type=int, help='실행 시간 (초)')
