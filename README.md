@@ -44,3 +44,10 @@ e-commerce-de/
 └── notebooks/# 데이터 탐색 및 분석용
     └── 01_explore_user_logs.ipynb
 ```
+
+## how to start
+
+source .venv/Scripts/activate
+
+python -m data_producer.producer --mode sample --count 10
+python -m data_producer.producer --mode stream --duration 60
