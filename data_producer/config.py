@@ -10,6 +10,7 @@ load_dotenv()
 class KafkaConfig:
 
     # Kafka 브로커 설정
+    # default_factory: 필드의 기본 값을 지정하는 팩토리 메서드 지정
     bootstrap_servers: List[str] = field(
         default_factory=lambda: os.getenv(
             "KAFKA_BOOTSTRAP_SERVERS", "localhost:9092"

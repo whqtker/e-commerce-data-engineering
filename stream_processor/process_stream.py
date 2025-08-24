@@ -18,7 +18,7 @@ def _store_user_behavior(pipeline, row):
     user_id = row['user_id']
     timestamp = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
 
-    # 최근 행동 이력 (List)
+    # 최근 행동 이력에 대한 key-value 생성
     behavior_key = f"user:{user_id}:recent_behaviors"
     behavior_data = json.dumps({
         'product_id': row['product_id'],
@@ -28,21 +28,24 @@ def _store_user_behavior(pipeline, row):
         'timestamp': timestamp
     })
 
-    pipeline.lpush(behavior_key, behavior_data)
-    pipeline.ltrim(behavior_key, 0, 99)  # 최근 100개만 유지
-    pipeline.expire(behavior_key, 86400 * 7)  # 7일 TTL
+    # Redis 파이프라인에 추가
+    # 실제 실행은 pipeline.execute가 호출될 때 작동
+    pipeline.lpush(behavior_key, behavior_data) # 데이터 삽입
+    pipeline.ltrim(behavior_key, 0, 99) # 최근 100개만 유지
+    pipeline.expire(behavior_key, 86400 * 7) # 7일 TTL
 
 
 def _store_realtime_features(pipeline, row):
-    """실시간 피처 저장"""
     user_id = row['user_id']
 
     # 사용자별 카테고리 관심도 (Hash)
+    # hincrby: Hash의 특정 필드의 값을 1 증가
     category_key = f"user:{user_id}:category_interests"
     pipeline.hincrby(category_key, row['product_category'], 1)
     pipeline.expire(category_key, 86400 * 30)  # 30일 TTL
 
     # 가격대별 선호도 (Sorted Set)
+    # zincrby: Sorted Set에서 특정 멤버의 score 1 증가
     price_range = _get_price_range(row['product_price'])
     price_key = f"user:{user_id}:price_preferences"
     pipeline.zincrby(price_key, 1, price_range)
@@ -56,18 +59,19 @@ def _store_realtime_features(pipeline, row):
 
 def _store_session_data(pipeline, row):
     session_id = row['session_id']
-
-    # 세션 정보 (Hash)
     session_key = f"session:{session_id}"
-    session_data = {
-        'user_id': row['user_id'],
-        'start_time': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-        'last_activity': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-        'action_count': 1
-    }
+    timestamp_str = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
 
-    for field, value in session_data.items():
-        pipeline.hset(session_key, field, value)
+    # 세션의 시작 시간은 최초 한 번
+    # hsetnx: Hash에 해당 필드가 존재하지 않을 때 값을 설정
+    pipeline.hsetnx(session_key, 'start_time', timestamp_str)
+    pipeline.hsetnx(session_key, 'user_id', row['user_id'])
+
+    # 마지막 활동 시간은 매번 덮어쓰기
+    pipeline.hset(session_key, 'last_activity', timestamp_str)
+
+    # 세션 내 action_count는 1씩 증가
+    pipeline.hincrby(session_key, 'action_count', 1)
 
     pipeline.expire(session_key, 3600)  # 1시간 TTL
 
