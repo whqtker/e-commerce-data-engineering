@@ -75,6 +75,8 @@ python -m stream_processor.process_stream --duration 60
 
 ## ETL
 
+last updated: 25.08.25
+
 ### Extract
 
 `data_producer/producer.py`에서 `Faker` 라이브러리를 통해 샘플 데이터를 produce한다.
