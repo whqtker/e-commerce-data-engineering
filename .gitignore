@@ -4,3 +4,4 @@ WIL.md
 .idea
 /checkpoints/
 /log/
+/.env

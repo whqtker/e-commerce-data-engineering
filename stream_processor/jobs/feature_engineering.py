@@ -60,12 +60,12 @@ class FeatureEngineering:
                           .otherwise("night"))
     
     def _add_aggregated_features(self, df: DataFrame) -> DataFrame:
-        # 사용자별 세션 내 행동 순서
+        # 세션 기반 윈도우: 특정 사용자가 한 번의 방문 동안 일어난 행동 분석
         user_session_window = Window.partitionBy("user_id", "session_id").orderBy("timestamp")
 
         df_with_unix_ts = df.withColumn("timestamp_unix", unix_timestamp("timestamp"))
         
-        # 사용자별 최근 행동 패턴 (10분 윈도우)
+        # 시간 기반 윈도우: 특정 시용자가 일정 시간 동안 일어난 동작 분석
         time_window = Window.partitionBy("user_id") \
                            .orderBy("timestamp_unix") \
                            .rangeBetween(-600, 0)  # 10분 (600초)

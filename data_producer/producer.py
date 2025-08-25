@@ -19,6 +19,9 @@ from .config import kafka_config, data_config
 
 @dataclass
 class UserBehaviorEvent:
+    """
+    사용자의 단일 행동을 표현한다.
+    """
     user_id: str
     product_id: str
     action_type: str
@@ -26,10 +29,11 @@ class UserBehaviorEvent:
     session_id: str
     product_category: str
     product_price: float
-    user_agent: str
+    user_agent: str # 사용자 브라우저 또는 기기 정보
     ip_address: str
-    referrer: Optional[str] = None
-    
+    referrer: Optional[str] = None # 사용자가 유입된 경로
+
+    # 객체를 딕셔너리로 변환
     def to_dict(self) -> Dict:
         return {
             'user_id': self.user_id,
@@ -45,8 +49,10 @@ class UserBehaviorEvent:
         }
 
 
-# 실시간 사용자 행동 데이터 생성 및 Kafka로 전송하는 프로듀서 정의
 class UserBehaviorProducer:
+    """
+    UserBehaviorEvent를 생성하고 Kafka로 전송하는 프로듀서를 정의한다.
+    """
     
     def __init__(self):
         self.faker = Faker(['en_US', 'ko_KR'])
@@ -64,13 +70,15 @@ class UserBehaviorProducer:
         self.product_pool = self._generate_product_pool()
         
         # 세션을 관리하는 딕셔너리
+        # key: user_id, value: session_id
         self.user_sessions: Dict[str, str] = {}
         
         # Graceful shutdown을 위한 시그널 핸들러
+        # 명시된 시그널이 발생하면 명시된 핸들러가 수행된다.
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
     
-    # 사용자 ID 풀 생성
+    # 사용자 풀 생성
     def _generate_user_pool(self) -> List[str]:
         self.logger.info(f"사용자 풀 생성 중... (크기: {data_config.user_pool_size})")
         return [f"user_{i:06d}" for i in range(1, data_config.user_pool_size + 1)]
@@ -83,33 +91,35 @@ class UserBehaviorProducer:
             product = {
                 'id': f"product_{i:06d}",
                 'category': random.choice(data_config.product_categories),
-                'price': round(random.uniform(10.0, 1000.0), 2)
+                'price': round(random.uniform(10.0, 1000.0), 2) # uniform(a, b): a<=x<=b를 만족하는 실수 x를 리턴
             }
             products.append(product)
         return products
     
-    # 사용자별 세션 ID 관려
+    # 사용자 ID가 존재하는 세션 ID 리턴
     def _get_session_id(self, user_id: str) -> str:
+        # 사용자가 세션에 없다면 새로 생성
         if user_id not in self.user_sessions:
             self.user_sessions[user_id] = self.faker.uuid4()
         
-        # 일정 확률로 새 세션 생성 - 세션 만료 시뮬레이션
-        if random.random() < 0.05: # 5%
+        # 세션 만료 상황을 시뮬레이션한다. 5% 확률로 세션을 새로 생성한다.
+        if random.random() < 0.05:
             self.user_sessions[user_id] = self.faker.uuid4()
         
         return self.user_sessions[user_id]
     
     # 현재 시간대별 트래픽 가중치 적용
     def _apply_hourly_multiplier(self) -> float:
+        # 현재 시간을 확인하여 해당하는 가중치를 리턴한다.
         current_hour = datetime.now().hour
-        return data_config.hourly_traffic_multiplier.get(current_hour, 1.0)
+        return data_config.hourly_traffic_multiplier.get(current_hour, 1.0) # 만약 해당 시간이 없는 경우 1.0(가중치 없음) 리턴
     
-    # 단일 사용자 행동 이벤트 생성
+    # 단일 UserBehaviorEvent 생성
     def _generate_event(self) -> UserBehaviorEvent:
         user_id = random.choice(self.user_pool)
         product = random.choice(self.product_pool)
         
-        # 가중치를 적용한 행동 타입 선택
+        # 가중치를 적용하여 사용자의 행동 결정
         action_type = random.choices(
             list(data_config.action_weights.keys()),
             weights=list(data_config.action_weights.values())
@@ -144,8 +154,10 @@ class UserBehaviorProducer:
     
     def _setup_producer(self) -> KafkaProducer:
         try:
+            # 데이터 직렬화 설정 및 외부 설정 주입
+            # 카프카는 바이트 형태의 데이터만 주고받을 수 있음
             producer = KafkaProducer(
-                value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode('utf-8'),
+                value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode('utf-8'), # 딕셔너리를 JSON으로 변환 후 인코딩
                 key_serializer=lambda k: k.encode('utf-8') if k else None,
                 **kafka_config.get_full_config()
             )
@@ -156,9 +168,14 @@ class UserBehaviorProducer:
         except Exception as e:
             self.logger.error(f"Kafka Producer 생성 실패: {e}")
             raise
-    
-    # 메시지 전송 결과 롤백
+
     def _delivery_callback(self, record_metadata):
+        """
+        메시지 전송 결과에 대한 콜백함수이다.
+        kafka-python의 send 메서드는 기본적으로 비동기로 작동한다. 따라서 send 메서드의 리턴 값인 Future 객체에 해당 메서드를
+        콜백함수로 등록하면 메시지가 성공적으로 도착하면 콜백함수가 자동으로 수행된다.
+        이후 future.add_callback 을 통해 콜백함수를 등록한다.
+        """
         if record_metadata:
             self.stats['total_sent'] += 1
             if self.stats['total_sent'] % 100 == 0:
@@ -181,6 +198,8 @@ class UserBehaviorProducer:
         sys.exit(0)
     
     # 배치 단위로 이벤트 생성
+    # Generator: 데이터를 미리 만들지 않고 필요할 때마다 하나씩 만들 수 있는 객체
+    # yield: return과 유사하나 반환 후 함수를 일시중지함. 다시 호출되면 계속 실행
     def generate_events_batch(self, batch_size: int) -> Generator[UserBehaviorEvent, None, None]:
         for _ in range(batch_size):
             yield self._generate_event()
@@ -198,7 +217,8 @@ class UserBehaviorProducer:
             self.logger.info(f"데이터 스트리밍 시작 (목표: {data_config.events_per_second} events/sec)")
             
             end_time = time.time() + duration_seconds if duration_seconds else None
-            
+
+            # 4개의 워커 쓰레드로 이벤트를 병렬 생성 및 전송
             with ThreadPoolExecutor(max_workers=4) as executor:
                 while self.is_running:
                     if end_time and time.time() >= end_time:
@@ -208,7 +228,7 @@ class UserBehaviorProducer:
                     hourly_multiplier = self._apply_hourly_multiplier()
                     current_batch_size = int(data_config.batch_size * hourly_multiplier)
                     
-                    # 배치 단위로 이벤트 생성 및 전송
+                    # 결정된 배치 단위로 이벤트 생성 및 전송
                     events_batch = list(self.generate_events_batch(current_batch_size))
                     
                     # 병렬 전송
@@ -237,7 +257,7 @@ class UserBehaviorProducer:
     
     def _send_event(self, event: UserBehaviorEvent):
         try:
-            # 파티셔닝을 위한 사용자 ID 기반 키 설정
+            # 파티셔닝을 위해 사용자 ID 기반으로 키 설정
             key = event.user_id
             
             future = self.producer.send(
@@ -250,10 +270,10 @@ class UserBehaviorProducer:
                 ]
             )
         
-            # 성공 콜백
+            # 성공 콜백 등록
             future.add_callback(self._delivery_callback)
             
-            # 에러 콜백
+            # 에러 콜백 등록
             future.add_errback(self._error_callback)
         
         except Exception as e:

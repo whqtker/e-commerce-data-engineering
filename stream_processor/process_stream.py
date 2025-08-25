@@ -18,7 +18,7 @@ def _store_user_behavior(pipeline, row):
     user_id = row['user_id']
     timestamp = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
 
-    # 최근 행동 이력 (List)
+    # 최근 행동 이력에 대한 key-value 생성
     behavior_key = f"user:{user_id}:recent_behaviors"
     behavior_data = json.dumps({
         'product_id': row['product_id'],
@@ -28,21 +28,24 @@ def _store_user_behavior(pipeline, row):
         'timestamp': timestamp
     })
 
-    pipeline.lpush(behavior_key, behavior_data)
-    pipeline.ltrim(behavior_key, 0, 99)  # 최근 100개만 유지
-    pipeline.expire(behavior_key, 86400 * 7)  # 7일 TTL
+    # Redis 파이프라인에 추가
+    # 실제 실행은 pipeline.execute가 호출될 때 작동
+    pipeline.lpush(behavior_key, behavior_data) # 데이터 삽입
+    pipeline.ltrim(behavior_key, 0, 99) # 최근 100개만 유지
+    pipeline.expire(behavior_key, 86400 * 7) # 7일 TTL
 
 
 def _store_realtime_features(pipeline, row):
-    """실시간 피처 저장"""
     user_id = row['user_id']
 
     # 사용자별 카테고리 관심도 (Hash)
+    # hincrby: Hash의 특정 필드의 값을 1 증가
     category_key = f"user:{user_id}:category_interests"
     pipeline.hincrby(category_key, row['product_category'], 1)
     pipeline.expire(category_key, 86400 * 30)  # 30일 TTL
 
     # 가격대별 선호도 (Sorted Set)
+    # zincrby: Sorted Set에서 특정 멤버의 score 1 증가
     price_range = _get_price_range(row['product_price'])
     price_key = f"user:{user_id}:price_preferences"
     pipeline.zincrby(price_key, 1, price_range)
@@ -56,18 +59,19 @@ def _store_realtime_features(pipeline, row):
 
 def _store_session_data(pipeline, row):
     session_id = row['session_id']
-
-    # 세션 정보 (Hash)
     session_key = f"session:{session_id}"
-    session_data = {
-        'user_id': row['user_id'],
-        'start_time': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-        'last_activity': row['timestamp'].strftime('%Y-%m-%d %H:%M:%S'),
-        'action_count': 1
-    }
+    timestamp_str = row['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
 
-    for field, value in session_data.items():
-        pipeline.hset(session_key, field, value)
+    # 세션의 시작 시간은 최초 한 번
+    # hsetnx: Hash에 해당 필드가 존재하지 않을 때 값을 설정
+    pipeline.hsetnx(session_key, 'start_time', timestamp_str)
+    pipeline.hsetnx(session_key, 'user_id', row['user_id'])
+
+    # 마지막 활동 시간은 매번 덮어쓰기
+    pipeline.hset(session_key, 'last_activity', timestamp_str)
+
+    # 세션 내 action_count는 1씩 증가
+    pipeline.hincrby(session_key, 'action_count', 1)
 
     pipeline.expire(session_key, 3600)  # 1시간 TTL
 
@@ -125,16 +129,16 @@ class StreamProcessor:
         
         if config:
             default_config.update(config)
-        
+
         return default_config
     
-    # forceDeleteTempCheckpointLocation: 스트리밍 쿼리 정상 종료 시 체크포인트 파일 삭제하도록
     def _create_spark_session(self) -> SparkSession:
         import sys
         python_path = sys.executable
         os.environ['PYSPARK_PYTHON'] = python_path
         os.environ['PYSPARK_DRIVER_PYTHON'] = python_path
 
+        # forceDeleteTempCheckpointLocation: 스트리밍 쿼리 정상 종료 시 체크포인트 파일 삭제하도록
         spark = SparkSession.builder \
             .appName(self.config['app_name']) \
             .master("local[12]") \
@@ -196,9 +200,10 @@ class StreamProcessor:
         ])
     
     # Kafka에서 스트리밍 데이터 읽기
-    # failOnDataLoss: 데이터를 읽는 도중 유실된 상황을 감지했을 때 작업 실패 여부
     def create_kafka_stream(self) -> DataFrame:
         try:
+            # failOnDataLoss: 데이터를 읽는 도중 유실된 상황을 감지했을 때 작업 실패 여부
+            # kafka.bootstrap.servers: 접속할 Kafak 브로커 주소
             kafka_df = self.spark \
                 .readStream \
                 .format("kafka") \
@@ -208,7 +213,7 @@ class StreamProcessor:
                 .option("failOnDataLoss", "false") \
                 .load()
             
-            # Kafka value를 JSON으로 파싱
+            # 스키마 정의
             schema = self._define_schema()
             
             parsed_df = kafka_df.select(
@@ -220,7 +225,7 @@ class StreamProcessor:
                 col("timestamp").alias("kafka_timestamp")
             ).select(
                 "kafka_key",
-                "data.*",
+                "data.*", # data.*: data라는 이름의 구조체 안의 모든 필드를 개별 컬럼으로 펼친다.
                 "topic",
                 "partition", 
                 "offset",
@@ -263,6 +268,9 @@ class StreamProcessor:
                 raise
         
         # 스트림 쿼리 시작
+        # trigger에 설정된 간격마다 새로운 데이터로 마이크로 배치 데이터프레임을 생성한다.
+        # 생성된 데이터프레임과 배치 ID를 process_batch 메서드의 인자로 전달하여 피처 엔지니어링을 수행한다.
+        # checkpointLocation으로 체크포인트 위치 지정
         query = df.writeStream \
             .outputMode(self.config['output_mode']) \
             .foreachBatch(process_batch) \
@@ -293,6 +301,7 @@ class StreamProcessor:
             pipeline = redis_client.pipeline()
             count = 0
 
+            # rows를 순회하며 파이프라인에 데이터 적재
             for row in rows:
                 try:
                     # 사용자 행동 데이터 저장
@@ -335,7 +344,7 @@ class StreamProcessor:
             # 처리 및 Redis 저장 시작
             query = self.process_and_store_to_redis(kafka_stream)
             
-            # 활성 스트림 추가
+            # 생성된 StreamingQuery 등록
             self.active_streams['main'] = query
             
             if duration_seconds:
@@ -382,6 +391,9 @@ class StreamProcessor:
 
 def main():
     import argparse
+    from dotenv import load_dotenv
+
+    load_dotenv()
     
     parser = argparse.ArgumentParser(description='Kafka → Spark → Redis 스트림 처리')
     parser.add_argument('--duration', type=int, help='실행 시간 (초)')
