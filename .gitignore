@@ -5,3 +5,7 @@ WIL.md
 /checkpoints/
 /log/
 /.env
+/infra/terraform/.terraform.lock.hcl
+/infra/terraform/terraform.tfstate
+/infra/terraform/terraform.tfstate.backup
+/infra/terraform/.terraform/
