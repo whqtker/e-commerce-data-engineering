@@ -39,8 +39,8 @@ services:
     networks:
       - data-network
     volumes:
-      - ./stream_processor:/opt/bitnami/spark/jobs/stream
-      - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+      - ../stream_processor:/opt/bitnami/spark/jobs/stream
+      - ../batch_processor/jobs:/opt/bitnami/spark/jobs/batch
     env_file:
       - ../.env
 
@@ -54,8 +54,8 @@ services:
     networks:
       - data-network
     volumes:
-      - ./stream_processor:/opt/bitnami/spark/jobs/stream
-      - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+      - ../stream_processor:/opt/bitnami/spark/jobs/stream
+      - ../batch_processor/jobs:/opt/bitnami/spark/jobs/batch
     env_file:
       - ../.env
 
@@ -121,7 +121,7 @@ services:
     ports:
       - "8081:8080" # 8080 포트는 Spark UI가 사용
     volumes:
-      - ./batch_processor/dags:/opt/airflow/dags
+      - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
     environment:
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
@@ -139,7 +139,7 @@ services:
     networks:
       - data-network
     volumes:
-      - ./batch_processor/dags:/opt/airflow/dags
+      - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
     environment:
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
@@ -157,8 +157,9 @@ services:
     networks:
       - data-network
     volumes:
-      - ./batch_processor/dags:/opt/airflow/dags
+      - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
+      - ../batch_processor:/opt/airflow/spark_jobs/batch
     environment:
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
