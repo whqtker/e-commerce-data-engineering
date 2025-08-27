@@ -66,6 +66,8 @@ services:
     container_name: postgres
     networks:
       - data-network
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=airflow
       - POSTGRES_PASSWORD=airflow

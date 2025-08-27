@@ -76,6 +76,24 @@ python -m data_producer.producer --mode stream --duration 60
 
 python -m stream_processor.process_stream --duration 60
 
+### Airflow DAG 트리거
+Airflow UI 접속: http://localhost:8081
+
+Admin → Connections 메뉴
+
+"+" 버튼으로 새 Connection 생성:
+
+Connection Id: spark_default
+
+Connection Type: Spark
+
+Host: spark-master
+
+Port: 7077
+
+Extra: {"queue": "default"}
+docker exec airflow-scheduler airflow dags trigger train_recommendation_model_dag
+
 ---
 
 last updated: 25.08.25
