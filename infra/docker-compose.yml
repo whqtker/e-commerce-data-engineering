@@ -128,6 +128,7 @@ services:
       - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
     environment:
+      - AIRFLOW_CONN_SPARK_DEFAULT=spark://spark-master:7077
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
@@ -147,6 +148,7 @@ services:
       - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
     environment:
+      - AIRFLOW_CONN_SPARK_DEFAULT=spark://spark-master:7077
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
@@ -167,6 +169,7 @@ services:
       - airflow-logs:/opt/airflow/logs
       - ../batch_processor:/opt/airflow/spark_jobs/batch
     environment:
+      - AIRFLOW_CONN_SPARK_DEFAULT=spark://spark-master:7077
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0

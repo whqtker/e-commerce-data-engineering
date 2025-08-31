@@ -58,7 +58,7 @@ def train_model():
         raw_data.createOrReplaceTempView("user_behavior_logs")
         logger.info("S3 데이터를 'user_behavior_logs' 임시 뷰로 등록 완료")
 
-        sql_file_path = "/opt/bitnami/spark/jobs/batch/sql/user_behavior.sql"
+        sql_file_path = "/opt/airflow/spark_jobs/batch/sql/user_behavior.sql"
         with open(sql_file_path, 'r') as f:
             query = f.read()
 

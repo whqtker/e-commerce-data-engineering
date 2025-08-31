@@ -13,6 +13,6 @@ with DAG(
     submit_spark_job = SparkSubmitOperator(
         task_id="submit_als_model_trainer",
         conn_id="spark_default",
-        application="/opt/bitnami/spark/jobs/batch/model_trainer.py",
+        application="/opt/airflow/spark_jobs/batch/jobs/model_trainer.py",
         verbose=True,
     )
