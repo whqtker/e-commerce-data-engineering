@@ -6,7 +6,7 @@ from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOpe
 with DAG(
         dag_id="train_recommendation_model_dag",
         start_date=pendulum.datetime(2025, 8, 25, tz="Asia/Seoul"),
-        schedule="@daily", # 매일 자정
+        schedule=None,
         catchup=False,
         tags=["recommendation", "spark", "batch"],
 ) as dag:
