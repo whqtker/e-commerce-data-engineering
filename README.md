@@ -76,23 +76,20 @@ python -m data_producer.producer --mode stream --duration 60
 
 python -m stream_processor.process_stream --duration 60
 
-### Airflow DAG 트리거
-Airflow UI 접속: http://localhost:8081
+### airflow logs
 
-Admin → Connections 메뉴
+docker logs airflow-worker
+docker logs spark-master
+docker logs spark-worker
+docker logs airflow-scheduler
 
-"+" 버튼으로 새 Connection 생성:
+docker-compose down -v && docker-compose up --build -d
 
-Connection Id: spark_default
+docker exec airflow-scheduler airflow dags list-runs -d train_recommendation_model_dag -o plain
+최근 DAG run, run_id 확인하기
 
-Connection Type: Spark
-
-Host: spark-master
-
-Port: 7077
-
-Extra: {"queue": "default"}
-docker exec airflow-scheduler airflow dags trigger train_recommendation_model_dag
+docker exec airflow-scheduler airflow tasks logs train_recommendation_model_dag submit_als_model_trainer <run_id>
+run 로그 보기
 
 ---
 

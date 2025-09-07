@@ -11,9 +11,6 @@ WITH behavior_with_weight AS (
         END AS weight
     FROM
         user_behavior_events
-    WHERE
-        timestamp >= '{{ data_interval_start.to_iso8601() }}' AND
-        timestamp < '{{ data_interval_end.to_iso8601() }}'
 )
 
 SELECT
