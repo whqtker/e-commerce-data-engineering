@@ -7,7 +7,6 @@ e-commerce-de/
 │       └── ci.yml
 ├── .gitignore
 ├── README.md
-├── requirements.txt
 |
 ├── data_producer/ # 실시간 로그 생성기
 │   ├── __init__.py
@@ -51,9 +50,9 @@ python : 3.9.x
 hadoop : 3.3.6
 spark : 3.5.6
 
-나머지는 poetry에 명시
-
 ## how to start
+
+### 개발 환경 세팅
 
 hadoop 3.3.6 설치
 hadoop.ddl, winutils.exe
@@ -68,14 +67,35 @@ pip install poetry
 
 poetry install
 
+### produce
+
 python -m data_producer.producer --mode sample --count 10
 python -m data_producer.producer --mode stream --duration 60
 
+### consume
+
 python -m stream_processor.process_stream --duration 60
 
-## ETL
+### airflow logs
+
+docker logs airflow-worker
+docker logs spark-master
+docker logs spark-worker
+docker logs airflow-scheduler
+
+docker-compose down -v && docker-compose up --build -d
+
+docker exec airflow-scheduler airflow dags list-runs -d train_recommendation_model_dag -o plain
+최근 DAG run, run_id 확인하기
+
+docker exec airflow-scheduler airflow tasks logs train_recommendation_model_dag submit_als_model_trainer <run_id>
+run 로그 보기
+
+---
 
 last updated: 25.08.25
+
+## ETL
 
 ### Extract
 

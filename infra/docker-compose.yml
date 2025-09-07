@@ -39,8 +39,8 @@ services:
     networks:
       - data-network
     volumes:
-      - ./stream_processor:/opt/bitnami/spark/jobs/stream
-      - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+      - ../stream_processor:/opt/bitnami/spark/jobs/stream
+      - ../batch_processor/jobs:/opt/bitnami/spark/jobs/batch
     env_file:
       - ../.env
 
@@ -54,8 +54,8 @@ services:
     networks:
       - data-network
     volumes:
-      - ./stream_processor:/opt/bitnami/spark/jobs/stream
-      - ./batch_processor/jobs:/opt/bitnami/spark/jobs/batch
+      - ../stream_processor:/opt/bitnami/spark/jobs/stream
+      - ../batch_processor/jobs:/opt/bitnami/spark/jobs/batch
     env_file:
       - ../.env
 
@@ -65,7 +65,11 @@ services:
     image: postgres:13
     container_name: postgres
     networks:
-      - data-network
+      data-network:
+        aliases:
+          - postgres
+    ports:
+      - "5432:5432"
     environment:
       - POSTGRES_USER=airflow
       - POSTGRES_PASSWORD=airflow
@@ -91,7 +95,8 @@ services:
 
   # Airflow 초기화
   airflow-init:
-    image: apache/airflow:2.9.2
+    build:
+      context: ./airflow
     container_name: airflow-init
     depends_on:
       postgres:
@@ -104,6 +109,7 @@ services:
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__WEBSERVER__SECRET_KEY=79cec19de17e7d0a1f3c2439e8161f135d186d66b190591b35659e27921e4a55
     command: >
       bash -c "
         airflow db migrate &&
@@ -111,9 +117,12 @@ services:
       "
 
   airflow-webserver:
-    image: apache/airflow:2.9.2
+    build:
+      context: ./airflow
     container_name: airflow-webserver
     depends_on:
+      postgres:
+        condition: service_healthy
       airflow-init:
         condition: service_completed_successfully
     networks:
@@ -121,17 +130,30 @@ services:
     ports:
       - "8081:8080" # 8080 포트는 Spark UI가 사용
     volumes:
-      - ./batch_processor/dags:/opt/airflow/dags
+      - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
     environment:
+      - AIRFLOW_CONN_SPARK_DEFAULT=spark://spark-master:7077
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING=True
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE=3600
+      - AIRFLOW__CORE__TASK_HEARTBEAT_TIMEOUT=900
+      - AIRFLOW__SCHEDULER__TASK_QUEUED_TIMEOUT=1800
+      - AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD=120
+      - AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD=900
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__LOGGING__BASE_LOG_FOLDER=/opt/airflow/logs
+      - AIRFLOW__LOGGING__LOGGING_LEVEL=INFO
+      - AIRFLOW__LOGGING__TASK_LOG_READER=task
+      - AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LOCATION=/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log
+      - AIRFLOW__WEBSERVER__SECRET_KEY=79cec19de17e7d0a1f3c2439e8161f135d186d66b190591b35659e27921e4a55
     command: webserver
 
   airflow-scheduler:
-    image: apache/airflow:2.9.2
+    build:
+      context: ./airflow
     container_name: airflow-scheduler
     depends_on:
       airflow-init:
@@ -139,17 +161,33 @@ services:
     networks:
       - data-network
     volumes:
-      - ./batch_processor/dags:/opt/airflow/dags
+      - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
     environment:
+      - AIRFLOW_CONN_SPARK_DEFAULT=spark://spark-master:7077
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING=True
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE=3600
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE=5
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW=10
+      - AIRFLOW__CORE__TASK_HEARTBEAT_TIMEOUT=900
+      - AIRFLOW__SCHEDULER__TASK_QUEUED_TIMEOUT=1800
+      - AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD=120
+      - AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD=900
+      - AIRFLOW__CELERY__WORKER_CONCURRENCY=2
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
+      - AIRFLOW__LOGGING__BASE_LOG_FOLDER=/opt/airflow/logs
+      - AIRFLOW__LOGGING__LOGGING_LEVEL=INFO
+      - AIRFLOW__LOGGING__TASK_LOG_READER=task
+      - AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LOCATION=/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log
+      - AIRFLOW__WEBSERVER__SECRET_KEY=79cec19de17e7d0a1f3c2439e8161f135d186d66b190591b35659e27921e4a55
     command: scheduler
 
   airflow-worker:
-    image: apache/airflow:2.9.2
+    build:
+      context: ./airflow
     container_name: airflow-worker
     depends_on:
       airflow-scheduler:
@@ -157,14 +195,32 @@ services:
     networks:
       - data-network
     volumes:
-      - ./batch_processor/dags:/opt/airflow/dags
+      - ../batch_processor/dags:/opt/airflow/dags
       - airflow-logs:/opt/airflow/logs
+      - ../batch_processor:/opt/airflow/spark_jobs/batch
     environment:
+      - AIRFLOW_CONN_SPARK_DEFAULT=spark://spark-master:7077
       - AIRFLOW__CORE__EXECUTOR=CeleryExecutor
       - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_PRE_PING=True
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_RECYCLE=3600
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_POOL_SIZE=5
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_MAX_OVERFLOW=10
+      - AIRFLOW__CORE__TASK_HEARTBEAT_TIMEOUT=900
+      - AIRFLOW__SCHEDULER__TASK_QUEUED_TIMEOUT=1800
+      - AIRFLOW__SCHEDULER__SCHEDULER_HEALTH_CHECK_THRESHOLD=120
+      - AIRFLOW__SCHEDULER__SCHEDULER_ZOMBIE_TASK_THRESHOLD=900
+      - AIRFLOW__CELERY__WORKER_CONCURRENCY=2
       - AIRFLOW__CELERY__BROKER_URL=redis://redis:6379/0
       - AIRFLOW__CELERY__RESULT_BACKEND=db+postgresql://airflow:airflow@postgres/airflow
-    command: celery worker
+      - AIRFLOW__LOGGING__BASE_LOG_FOLDER=/opt/airflow/logs
+      - AIRFLOW__LOGGING__LOGGING_LEVEL=INFO
+      - AIRFLOW__LOGGING__TASK_LOG_READER=task
+      - AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LOCATION=/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log
+      - AIRFLOW__WEBSERVER__SECRET_KEY=79cec19de17e7d0a1f3c2439e8161f135d186d66b190591b35659e27921e4a55
+    env_file:
+      - ../.env
+    command: airflow celery worker
 
   # API 서버 관련
   api_server:

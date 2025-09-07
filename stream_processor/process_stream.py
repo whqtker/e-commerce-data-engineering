@@ -124,6 +124,7 @@ class StreamProcessor:
             
             # 처리 설정
             'batch_size': int(os.getenv('BATCH_SIZE', '100')),
+            's3_datalake_path': os.getenv('S3_DATALAKE_PATH', 's3a://your-default-bucket/events'),
             'watermark_delay': '1 minute',
         }
         
@@ -138,8 +139,11 @@ class StreamProcessor:
         os.environ['PYSPARK_PYTHON'] = python_path
         os.environ['PYSPARK_DRIVER_PYTHON'] = python_path
 
+        aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+        aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
         # forceDeleteTempCheckpointLocation: 스트리밍 쿼리 정상 종료 시 체크포인트 파일 삭제하도록
-        spark = SparkSession.builder \
+        builder = SparkSession.builder \
             .appName(self.config['app_name']) \
             .master("local[12]") \
             .config("spark.driver.host", "localhost") \
@@ -149,12 +153,21 @@ class StreamProcessor:
             .config("spark.sql.streaming.forceDeleteTempCheckpointLocation", "true") \
             .config("spark.jars.packages", 
                    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,"
-                   "com.redislabs:spark-redis_2.12:3.1.0") \
+                   "com.redislabs:spark-redis_2.12:3.1.0,"
+                   "org.apache.hadoop:hadoop-aws:3.3.4") \
             .config("spark.redis.host", self.config['redis_host']) \
             .config("spark.redis.port", self.config['redis_port']) \
             .config("spark.redis.db", self.config['redis_db']) \
             .config("spark.serializer", "org.apache.spark.serializer.KryoSerializer") \
-            .getOrCreate()
+
+        if aws_access_key and aws_secret_key:
+            builder = builder.config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
+                .config("spark.hadoop.fs.s3a.secret.key", aws_secret_key) \
+                .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+                .config("spark.hadoop.fs.s3a.aws.credentials.provider",
+                        "org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider")
+
+        spark = builder.getOrCreate()
         
         # 로그 레벨 설정
         spark.sparkContext.setLogLevel("WARN")
@@ -245,6 +258,56 @@ class StreamProcessor:
         except Exception as e:
             self.logger.error(f"Kafka 스트림 생성 실패: {e}")
             raise
+
+    def process_streams(self, df: DataFrame) -> StreamingQuery:
+
+        def process_batch(batch_df: DataFrame, batch_id: int):
+            try:
+                if batch_df.rdd.isEmpty():
+                    return
+
+                self.logger.info(f"배치 {batch_id} 처리 시작 - 레코드 수: {batch_df.count()}")
+
+                batch_df.cache()
+
+                self._save_to_s3_datalake(batch_df, batch_id)
+
+                processed_df = self.feature_engineer.process_user_behavior(batch_df)
+                self._save_to_redis(processed_df, batch_id)
+
+                batch_df.unpersist()
+
+                self.logger.info(f"배치 {batch_id} 처리 완료")
+
+            except Exception as e:
+                self.logger.error(f"배치 {batch_id} 처리 중 오류: {e}", exc_info=True)
+                raise
+
+        query = df.writeStream \
+            .outputMode("update") \
+            .foreachBatch(process_batch) \
+            .option("checkpointLocation", f"{self.config['checkpoint_location']}/main_sink") \
+            .trigger(processingTime=self.config['trigger_interval']) \
+            .start()
+
+        return query
+
+    def _save_to_s3_datalake(self, df: DataFrame, batch_id: int):
+        try:
+            s3_path = self.config['s3_datalake_path']
+
+            # 날짜 파티션 컬럼 추가
+            df_with_partition = df.withColumn("event_date", to_date(col("timestamp")))
+
+            # S3에 Parquet으로 저장
+            df_with_partition.write \
+                .partitionBy("event_date") \
+                .mode("append") \
+                .parquet(s3_path)
+
+            self.logger.info(f"배치 {batch_id}: S3 데이터 레이크 저장 완료 ({s3_path})")
+        except Exception as e:
+            self.logger.error(f"배치 {batch_id} S3 저장 실패: {e}", exc_info=True)
     
     def process_and_store_to_redis(self, df: DataFrame) -> StreamingQuery:
         
@@ -255,10 +318,8 @@ class StreamProcessor:
                 
                 self.logger.info(f"배치 {batch_id} 처리 시작 - 레코드 수: {batch_df.count()}")
                 
-                # 피처 엔지니어링
                 processed_df = self.feature_engineer.process_user_behavior(batch_df)
                 
-                # Redis에 저장
                 self._save_to_redis(processed_df, batch_id)
                 
                 self.logger.info(f"배치 {batch_id} 처리 완료")
@@ -342,7 +403,7 @@ class StreamProcessor:
             kafka_stream = self.create_kafka_stream()
             
             # 처리 및 Redis 저장 시작
-            query = self.process_and_store_to_redis(kafka_stream)
+            query = self.process_streams(kafka_stream)
             
             # 생성된 StreamingQuery 등록
             self.active_streams['main'] = query
