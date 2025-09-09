@@ -91,6 +91,8 @@ docker exec airflow-scheduler airflow dags list-runs -d train_recommendation_mod
 docker exec airflow-scheduler airflow tasks logs train_recommendation_model_dag submit_als_model_trainer <run_id>
 run 로그 보기
 
+http://localhost:8000/recommendations/user_000001
+
 ---
 
 last updated: 25.08.25
