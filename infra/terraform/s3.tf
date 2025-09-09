@@ -112,3 +112,31 @@ output "data_lake_bucket_name" {
   value       = aws_s3_bucket.data_lake.bucket
   description = "The name of the created S3 data lake bucket."
 }
+
+resource "local_file" "env_file" {
+  filename = "${path.module}/../../.env"
+
+  content = <<-EOT
+# Kafka Configuration
+KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+KAFKA_TOPICS=user-behavior-events
+
+# Redis Configuration
+REDIS_HOST=localhost
+REDIS_PORT=6379
+REDIS_DB=0
+# REDIS_PASSWORD=
+
+# Spark Configuration
+CHECKPOINT_LOCATION=./checkpoints
+
+# Data Producer Configuration
+EVENTS_PER_SECOND=100
+DATA_BATCH_SIZE=10
+
+# --- Terraform apply에 의해 자동으로 생성된 값들 ---
+AWS_ACCESS_KEY_ID=${aws_iam_access_key.spark_app_user_key.id}
+AWS_SECRET_ACCESS_KEY=${aws_iam_access_key.spark_app_user_key.secret}
+S3_DATALAKE_PATH=s3a://${aws_s3_bucket.data_lake.bucket}/events
+EOT
+}
