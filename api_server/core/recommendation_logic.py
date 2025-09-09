@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import logging
 from typing import List
@@ -17,8 +19,10 @@ class RecommendationEngine:
         self.bucket_name = self._get_s3_bucket_name()
         self.model_path = f"s3a://{self.bucket_name}/models/als-recommendation-model"
         self.indexer_path = f"s3a://{self.bucket_name}/models/string-indexer-model"
-        self.model = self._load_model()
-        self.indexer_model = self._load_indexer()
+        # 시작 시점에 모델을 로드하지 않고 None으로 초기화 (Lazy Loading)
+        self.model: ALSModel | None = None
+        self.indexer_model: PipelineModel | None = None
+        self._models_loaded = False
 
     def _get_spark_session(self) -> SparkSession:
         # API 서버 환경에서는 로컬 Spark 세션을 사용합니다.
@@ -38,6 +42,26 @@ class RecommendationEngine:
             return s3_datalake_path.split('/')[2]
         raise ValueError("S3_DATALAKE_PATH 환경 변수가 올바르게 설정되지 않았습니다.")
 
+    def _ensure_models_loaded(self):
+        """모델이 로드되었는지 확인하고, 로드되지 않았다면 로드를 시도합니다."""
+        if not self._models_loaded:
+            logger.info("모델 Lazy Loading 시작...")
+            try:
+                self.model = self._load_model()
+                self.indexer_model = self._load_indexer()
+                self._models_loaded = True
+                logger.info("모델 Lazy Loading 성공.")
+            except Exception as e:
+                # Py4JJavaError는 Spark가 경로를 찾지 못할 때 발생합니다.
+                if 'Input path does not exist' in str(e):
+                    logger.warning(f"모델 경로를 찾을 수 없습니다. 모델이 아직 학습되지 않았을 수 있습니다. 경로: {self.model_path}")
+                else:
+                    logger.error(f"모델 로딩 중 예측하지 못한 오류 발생: {e}", exc_info=True)
+                # 로드 실패 시, 다시 시도하지 않도록 _models_loaded를 True로 설정합니다.
+                # 또는 특정 시간 후 재시도 로직을 추가할 수도 있습니다.
+                self._models_loaded = True
+
+
     def _load_model(self) -> ALSModel:
         logger.info(f"ALS 모델 로딩: {self.model_path}")
         return ALSModel.load(self.model_path)
@@ -47,6 +71,14 @@ class RecommendationEngine:
         return PipelineModel.load(self.indexer_path)
 
     def get_recommendations(self, user_id: str, num_items: int = 10) -> List[str]:
+        # 추천 요청이 들어왔을 때 모델 로드를 시도합니다.
+        self._ensure_models_loaded()
+
+        # 모델 로드에 실패했다면 빈 리스트를 반환합니다.
+        if not self.model or not self.indexer_model:
+            logger.warning("모델이 로드되지 않아 추천을 생성할 수 없습니다.")
+            return []
+
         try:
             # 1. 사용자 ID를 숫자 인덱스로 변환
             user_df = self.spark.createDataFrame([(user_id,)], ["user_id"])
@@ -86,5 +118,4 @@ class RecommendationEngine:
             return []
 
 
-# 싱글톤 인스턴스
 recommendation_engine = RecommendationEngine()
