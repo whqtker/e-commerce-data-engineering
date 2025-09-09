@@ -235,6 +235,8 @@ services:
       - "8000:8000"
     volumes:
       - ../api_server:/app
+    env_file:
+      - ../.env
 
 networks:
   data-network:
