@@ -1,4 +1,11 @@
-## 디렉터리 구조
+## Table of Contents
+
+- [Project Structure](#Project-Structure)
+- [Architecture Diagram](#Architecture-Diagram)
+- [Requirements](#Requirements)
+- [How to Start](#How-to-Start)
+
+## Project Structure
 
 ```
 e-commerce-de/
@@ -44,15 +51,20 @@ e-commerce-de/
     └── 01_explore_user_logs.ipynb
 ```
 
-## version
+## Architecture Diagram
 
-python : 3.9.x
-hadoop : 3.3.6
-spark : 3.5.6
+- terraform 으로 s3 버킷 생성
 
-## how to start
+## Requirements
 
-### 개발 환경 세팅
+- Python : 3.9.x
+- Hadoop : 3.3.6
+- Spark : 3.5.6
+- others : poetry
+
+## How to Start
+
+### Getting Started
 
 hadoop 3.3.6 설치
 hadoop.ddl, winutils.exe
@@ -67,31 +79,33 @@ pip install poetry
 
 poetry install
 
-### produce
+terraform apply
 
-python -m data_producer.producer --mode sample --count 10
-python -m data_producer.producer --mode stream --duration 60
+### Produce
 
-### consume
+```python
+# 샘플 데이터 생성
+python -m data_producer.producer --mode sample --count [생성할_데이터의_수]
+```
 
-python -m stream_processor.process_stream --duration 60
+```python
+# 스트림 모드로 데이터 생성
+python -m data_producer.producer --mode stream --duration [스트리밍_시간(초)]
+```
 
-### airflow logs
+### Consume
 
-docker logs airflow-worker
-docker logs spark-master
-docker logs spark-worker
-docker logs airflow-scheduler
+```python
+python -m stream_processor.process_stream --duration [스트리밍_시간(초)]
+```
 
-docker-compose down -v && docker-compose up --build -d
+### Trigger DAG
 
-docker exec airflow-scheduler airflow dags list-runs -d train_recommendation_model_dag -o plain
-최근 DAG run, run_id 확인하기
+### Serve Recommendations via API
 
-docker exec airflow-scheduler airflow tasks logs train_recommendation_model_dag submit_als_model_trainer <run_id>
-run 로그 보기
-
-http://localhost:8000/recommendations/user_000001
+```
+GET http://localhost:8000/recommendations/user_000001
+```
 
 ---
 
